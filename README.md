@@ -56,7 +56,6 @@ Los entornos pueden incluir herramientas como:
 * `sweetviz`
 * `tabulate`
 * `tsfresh`
-* `warnings`
 * `ydata-profiling`
 
 ### 5. Auditoría y Trazabilidad
