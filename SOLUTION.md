@@ -39,16 +39,16 @@
 
 # 2 — Convenciones y conceptos clave
 
-* **Each stage YAML**: contiene `name`, `python_exe` (ruta al ejecutable python que se usará para crear el venv), `packages` (lista pip), `notebook` (ruta), `kernel_name`, `env_dir`.
-* **Multiple Python versions**: instala varios intérpretes Python en Windows (ej. `C:\Python37\python.exe`, `C:\Python38\python.exe`, `C:\Python39\python.exe`, `C:\Python310\python.exe`) — el YAML referencia el path para la etapa. El script usa ese `python_exe -m venv`.
-* **No Docker**: todo local en Windows; Jenkins agentes Windows.
+* **Cada Stage YAML**: contiene `name`, `python_exe` (ruta al ejecutable python que se usará para crear el venv), `packages` (lista pip), `notebook` (ruta), `kernel_name`, `env_dir`.
+* **Multiples versiones de Python**: instala varios intérpretes Python en Windows (ej. `C:\Python37\python.exe`, `C:\Python38\python.exe`, `C:\Python39\python.exe`, `C:\Python310\python.exe`) — el YAML referencia el path para la etapa. El script usa ese `python_exe -m venv`.
+* **Sin Docker**: todo local en Windows; Jenkins agentes Windows.
 * **Jupyter kernels**: el script registrará `ipykernel` dentro de cada `venv` con un `display_name` legible por etapa.
 * **MLflow**: orquesta y registra; cada pipeline step llama a MLflow para iniciar run, y el notebook / wrapper sube artifacts (notebook ejecutado, pip-freeze, modelos, métricas).
 * **Notebooks como código**: versionados en Git; ejecución automatizada via `papermill` con parámetros.
 
 ---
 
-# 3 — YAML de ejemplo (spec de etapa)
+# 3 — YAML de ejemplo (especificación de etapa)
 
 Crea `env_specs/stage_train.yaml` (ejemplo):
 
@@ -87,7 +87,7 @@ packages:
 
 ---
 
-# 4 — `create_venv.bat` (caller simple)
+# 4 — `create_venv.bat` (llama al script .py correspondiente)
 
 Archivo `scripts/create_venv.bat`:
 
@@ -112,7 +112,7 @@ Este `.bat` asume que hay un Python "gestor" disponible en PATH (por ejemplo Pyt
 
 ---
 
-# 5 — `create_venv.py` (creador robusto en Python)
+# 5 — `create_venv.py` (script generador del entorno Python)
 
 Archivo `scripts/create_venv.py`:
 
@@ -190,7 +190,7 @@ Notas:
 
 ---
 
-# 6 — Registrar kernel y usarlo interactivo
+# 6 — Registrar kernel y usarlo interactivamente
 
 * El script ya registra el kernel con `ipykernel`. En Jupyter Desktop / Lab aparecerá `mlops-<stage> (kernel_name)`.
 * El cientista puede abrir el notebook y seleccionar el kernel para prototipado interactivo.
@@ -342,7 +342,7 @@ Con esto, MLflow puede lanzar `mlflow run . -e train -P spec_path=...`.
 
 ---
 
-# 9 — Jenkinsfile (Declarative, Windows agent)
+# 9 — Jenkinsfile (Declarativo, Windows agent)
 
 Ejemplo `Jenkinsfile` (coloca en repo):
 
