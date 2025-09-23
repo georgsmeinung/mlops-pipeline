@@ -2,7 +2,7 @@
 
 ## Descripción General
 
-Este proyecto implementa una solución de **MLOps auditable** en Windows, diseñada para equipos de ciencia de datos que prefieren evitar contenedores (Docker/Kubernetes) y trabajar directamente con **Jupyter Notebooks**. El flujo completo está orquestado con **MLflow** y **Jenkins**, permitiendo:
+Este proyecto implementa una solución de **MLOps auditable** en Windows, diseñada para equipos de ciencia de datos que prefieren trabajar directamente con **Jupyter Notebooks**. El flujo completo está orquestado con **MLflow** y **Jenkins**, permitiendo:
 
 * Auditoría de cada etapa del pipeline de ML.
 * Ejecución interactiva en notebooks.
