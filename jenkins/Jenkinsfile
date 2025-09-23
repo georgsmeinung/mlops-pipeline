@@ -1,0 +1,69 @@
+pipeline {
+    agent any
+    environment {
+        PYTHON39 = "C:\\Python39\\python.exe"
+        PYTHON310 = "C:\\Python310\\python.exe"
+    }
+    stages {
+        stage('Configurar Entorno - Ingesta') {
+            steps {
+                bat "scripts\\setup_venv.bat venv_ingesta_${BUILD_ID} ${PYTHON39} requirements\\requirements_ingesta.txt"
+            }
+        }
+        stage('Ingesta de Datos') {
+            steps {
+                bat "venv_ingesta_${BUILD_ID}\\Scripts\\activate && papermill notebooks\\01_ingesta_datos.ipynb output\\01_ingesta_datos_output.ipynb -p run_id ${BUILD_ID}"
+            }
+        }
+        stage('Configurar Entorno - Ingeniería') {
+            steps {
+                bat "scripts\\setup_venv.bat venv_ingenieria_${BUILD_ID} ${PYTHON310} requirements\\requirements_ingenieria.txt"
+            }
+        }
+        stage('Ingeniería de Características') {
+            steps {
+                bat "venv_ingenieria_${BUILD_ID}\\Scripts\\activate && papermill notebooks\\02_ingenieria_caracteristicas.ipynb output\\02_ingenieria_caracteristicas_output.ipynb -p run_id ${BUILD_ID}"
+            }
+        }
+        stage('Configurar Entorno - Entrenamiento') {
+            steps {
+                bat "scripts\\setup_venv.bat venv_entrenamiento_${BUILD_ID} ${PYTHON310} requirements\\requirements_entrenamiento.txt"
+            }
+        }
+        stage('Entrenamiento del Modelo') {
+            steps {
+                bat "venv_entrenamiento_${BUILD_ID}\\Scripts\\activate && papermill notebooks\\03_entrenamiento_modelo.ipynb output\\03_entrenamiento_modelo_output.ipynb -p run_id ${BUILD_ID}"
+            }
+        }
+        stage('Configurar Entorno - Evaluación') {
+            steps {
+                bat "scripts\\setup_venv.bat venv_evaluacion_${BUILD_ID} ${PYTHON310} requirements\\requirements_evaluacion.txt"
+            }
+        }
+        stage('Evaluación del Modelo') {
+            steps {
+                bat "venv_evaluacion_${BUILD_ID}\\Scripts\\activate && papermill notebooks\\04_evaluacion_modelo.ipynb output\\04_evaluacion_modelo_output.ipynb -p run_id ${BUILD_ID}"
+            }
+        }
+        stage('Configurar Entorno - Despliegue') {
+            steps {
+                bat "scripts\\setup_venv.bat venv_despliegue_${BUILD_ID} ${PYTHON310} requirements\\requirements_despliegue.txt"
+            }
+        }
+        stage('Despliegue del Modelo') {
+            steps {
+                bat "venv_despliegue_${BUILD_ID}\\Scripts\\activate && papermill notebooks\\05_despliegue_modelo.ipynb output\\05_despliegue_modelo_output.ipynb -p run_id ${BUILD_ID}"
+            }
+        }
+    }
+    post {
+        always {
+            bat "rd /s /q venv_ingesta_${BUILD_ID}"
+            bat "rd /s /q venv_ingenieria_${BUILD_ID}"
+            bat "rd /s /q venv_entrenamiento_${BUILD_ID}"
+            bat "rd /s /q venv_evaluacion_${BUILD_ID}"
+            bat "rd /s /q venv_despliegue_${BUILD_ID}"
+            archiveArtifacts artifacts: 'mlruns/**, logs/**', allowEmptyArchive: true
+        }
+    }
+}
