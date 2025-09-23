@@ -54,6 +54,20 @@ mlops-pipeline/
 └── README.md                                 # Este archivo
 ```
 
+## Configuración de Versiones de Python
+
+El pipeline permite usar diferentes versiones de Python para cada etapa. Asegúrate de:
+
+1. Instalar las versiones requeridas de Python (e.g., 3.9 y 3.10) en rutas específicas (e.g., `C:\Python39`, `C:\Python310`).
+2. Actualizar el `Jenkinsfile` con las rutas correctas de los ejecutables de Python.
+3. Verificar la compatibilidad de las dependencias en cada `requirements_*.txt` con la versión de Python correspondiente.
+
+Por ejemplo:
+- La etapa de ingesta de datos usa Python 3.9 con `requirements_ingesta.txt`.
+- La etapa de entrenamiento usa Python 3.10 con `requirements_entrenamiento.txt`.
+
+Consulta la documentación de cada biblioteca en `requirements/` para asegurar compatibilidad.
+
 ## Instalación y Configuración
 
 ### 1. Clonar el Repositorio
