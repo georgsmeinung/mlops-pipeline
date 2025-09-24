@@ -1,0 +1,13 @@
+stage: ingest
+python_version: "3.10"
+venv_name: "ml_hypteropt_py310"
+packages:
+  - mlflow==1.29.0
+  - papermill>=2.4.0
+  - pandas
+  - pycaret
+pip_extra_index: null   # opcional
+pre_commands:
+  - "chcp 65001"        # ejemplo si querés forzar UTF-8 en Windows
+post_commands: []
+kernel_display_name: "ml_hypteropt_py310"
