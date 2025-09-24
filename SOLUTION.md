@@ -1,10 +1,10 @@
 # 1 Arquitectura propuesta (alto nivel)
 
-1. **GoCD server** en una máquina (o VM). Agentes GoCD corriendo en las máquinas Windows de los data scientists o en una máquina Windows central (cada agente puede manejar múltiples pipelines). GoCD orquesta la ejecución: crea/actualiza venvs, ejecuta papermill contra notebooks y registra artefactos en MLflow. ([docs.gocd.org][3])
-2. **MLflow Tracking Server** (servicio Windows o proceso) con backend store (SQLite o SQL Server) y artifact store en disco compartido (carpeta accesible por agentes). MLflow sirve como «ledger» auditable de runs, métricas, artefactos y parámetros. ([mlflow.org][4])
+1. **GoCD server** en una máquina (o VM). Agentes GoCD corriendo en las máquinas Windows de los data scientists o en una máquina Windows central (cada agente puede manejar múltiples pipelines). GoCD orquesta la ejecución: crea/actualiza venvs, ejecuta papermill contra notebooks y registra artefactos en MLflow.
+2. **MLflow Tracking Server** (servicio Windows o proceso) con backend store (SQLite o SQL Server) y artifact store en disco compartido (carpeta accesible por agentes). MLflow sirve como «ledger» auditable de runs, métricas, artefactos y parámetros.
 3. **Repositorios Git**: notebooks (sin outputs), scripts .py, YAML de etapas. GoCD toma commit SHA para cada run (se graba en MLflow).
-4. **Notebooks Jupyter** por etapa (cada notebook hace su trabajo: ingest, limpieza, features, entrenamiento, evaluación, etc.). Se parametrizan y ejecutan por **papermill** (no jupytext). ([GitHub][2])
-5. **Script de creación de venvs** (`create_venv.py`) lee un YAML (por etapa) que especifica python-version y paquetes (lista). El script crea el venv usando el lanzador de Python `py` o `pyenv-win` si se desea automatizar instalación de Pythons. Luego instala paquetes, instala `ipykernel` y registra el kernel para Jupyter con un nombre claro (ej. `stage_ingest_py3.8`). ([GitHub][5])
+4. **Notebooks Jupyter** por etapa (cada notebook hace su trabajo: ingest, limpieza, features, entrenamiento, evaluación, etc.). Se parametrizan y ejecutan por **papermill**.
+5. **Script de creación de venvs** (`create_venv.py`) lee un YAML (por etapa) que especifica python-version y paquetes (lista). El script crea el venv usando el lanzador de Python `py` o `pyenv-win` si se desea automatizar instalación de Pythons. Luego instala paquetes, instala `ipykernel` y registra el kernel para Jupyter con un nombre claro (ej. `stage_ingest_py3.8`).
 
 # 2 Flujo (step-by-step)
 
@@ -13,8 +13,8 @@
 3. Para cada etapa: GoCD ejecuta pasos (tasks):
    a. `python create_venv.py --spec specs/ingest.yaml --venv-root C:\ml_venvs` — crea/actualiza venv.
    b. `python run_notebook.py --notebook notebooks/ingest.ipynb --params-file params/ingest_params.yaml` — ejecuta notebook con papermill y dentro del notebook se usan llamadas a `mlflow` para loguear artefactos/metrics. El `run_notebook.py` debe inyectar el tracking URI y metadata (git SHA, stage).
-4. **Papermill** ejecuta el notebook en ese venv (GoCD ejecuta el comando usando el intérprete del venv) y guarda el notebook ejecutado, que se sube como artifact a MLflow (o a almacenamiento de artefactos). ([GitHub][2])
-5. Al finalizar la etapa, se registran en MLflow: parámetros (entrada), métrica(s), artefactos (notebook ejecutado, `requirements.txt`/`pip_freeze.txt`, registro de paquetes y hashes), logs de stdout/stderr, y el Git commit SHA para trazabilidad. MLflow conserva todo para auditoría. ([mlflow.org][1])
+4. **Papermill** ejecuta el notebook en ese venv (GoCD ejecuta el comando usando el intérprete del venv) y guarda el notebook ejecutado, que se sube como artifact a MLflow (o a almacenamiento de artefactos).
+5. Al finalizar la etapa, se registran en MLflow: parámetros (entrada), métrica(s), artefactos (notebook ejecutado, `requirements.txt`/`pip_freeze.txt`, registro de paquetes y hashes), logs de stdout/stderr, y el Git commit SHA para trazabilidad. MLflow conserva todo para auditoría.
 
 # 3 Esquema de YAML para especificar cada etapa
 
@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
 Comentarios importantes:
 
-* En Windows recomiendo usar el **Python Launcher** (`py -3.8`) para crear venv con la versión específica si ya tenés esa versión instalada. Si necesitás instalar versiones de Python automáticamente, usar **pyenv-win** o instaladores silenciosos (winget/choco) es una opción. ([GitHub][5])
+* En Windows recomiendo usar el **Python Launcher** (`py -3.8`) para crear venv con la versión específica si ya tenés esa versión instalada. Si necesitás instalar versiones de Python automáticamente, usar **pyenv-win** o instaladores silenciosos (winget/choco) es una opción. 
 
 ## run\_notebook.py (esqueleto)
 
@@ -150,27 +150,24 @@ if __name__ == "__main__":
 Para que cada ejecución sea auditable, graba lo siguiente en MLflow y como artefactos (archivo en disco):
 
 * **Git commit SHA** (desde GoCD): lo pasás como param a papermill / MLflow.
-* **Notebook original (clean)** y **notebook ejecutado** (papermill produce `out.ipynb`). Guardar ambos. ([GitHub][2])
+* **Notebook original (clean)** y **notebook ejecutado** (papermill produce `out.ipynb`). Guardar ambos. 
 * **Environment spec**: el `specs/*.yaml` usado.
 * **requirements/pip-freeze** del venv (`pip freeze > pip_freeze.txt`) y/o `pip list --format=json`.
 * **Python version** y path del venv (`sys.version`, `sys.executable`).
 * **System logs** (stdout/stderr capturado por GoCD).
-* **MLflow run**: métricas, parámetros, artefactos (notebook ejecutado, modelos, etc.). Todo esto queda indexado y recuperable. ([mlflow.org][1])
+* **MLflow run**: métricas, parámetros, artefactos (notebook ejecutado, modelos, etc.). Todo esto queda indexado y recuperable. 
 
 # 6 Gestión de múltiples versiones de Python en Windows
 
-Opciones prácticas:
-
-* **Python Launcher (`py -3.8`)**: si en las máquinas ya están instaladas las versiones de Python que necesitas, el launcher es la forma más sencilla y reproducible para crear venvs con la versión deseada. Ej.: `py -3.9 -m venv C:\ml_venvs\env39`. ([GitHub][5])
-* **pyenv-win**: permite instalar y gestionar múltiples Pythons programáticamente (similar a pyenv en Unix). Útil si necesitás que GoCD instale automáticamente Pythons no presentes. Requiere instalación y elevación inicial. ([GitHub][6])
-  Decisión práctica: para un equipo de data scientists no tan técnicos, recomiendo **preinstalar** las versiones de Python más comunes en las máquinas agentes (o centralizar agentes con las versiones necesarias). Automatizar instalaciones con `winget` o `choco` es posible pero agrega complejidad.
+**pyenv-win**: permite instalar y gestionar múltiples Pythons programáticamente (similar a pyenv en Unix). Útil si necesitás que GoCD instale automáticamente Pythons no presentes. Requiere instalación y elevación inicial.
+Decisión práctica: para un equipo de data scientists no tan técnicos, recomiendo **preinstalar** las versiones de Python más comunes en las máquinas agentes (o centralizar agentes con las versiones necesarias). Automatizar instalaciones con `winget` o `choco` es posible pero agrega complejidad.
 
 # 7 GoCD: cómo modelar el pipeline (ideas concretas)
 
 * **Pipeline**: `mlops_pipeline`
 * **Stages**: `setup_env_ingest` -> `run_ingest` -> `setup_env_features` -> `run_features` -> `setup_env_train` -> `run_train` ...
 * **Jobs/Tasks**: cada `setup_env_*` corre `create_venv.py --spec specs/<stage>.yaml`; cada `run_*` corre `run_notebook.py` apuntando al venv correspondiente.
-* **Artifacts**: configurar GoCD para recoger artefactos (notebook ejecutado, pip\_freeze, logs) y subirlos al artifact store; además se suben a MLflow en cada run. ([docs.gocd.org][3])
+* **Artifacts**: configurar GoCD para recoger artefactos (notebook ejecutado, pip\_freeze, logs) y subirlos al artifact store; además se suben a MLflow en cada run.
 
 # 8 Pautas prácticas y recomendaciones (problemas y mitigaciones)
 
@@ -206,18 +203,18 @@ with mlflow.start_run(run_name="ingest"):
 
 # 10 Comprobaciones y referencias rápidas
 
-* Registrar kernel con ipykernel: `python -m ipykernel install --user --name "venvname" --display-name "Display Name"`. ([ipython.readthedocs.io][7])
-* Papermill doc y uso de parámetros: papermill CLI / API. ([papermill.readthedocs.io][8])
-* MLflow Projects / Pipelines para reproducibilidad y tracking. ([mlflow.org][4])
-* GoCD Agent Windows install (para desplegar agentes Windows). ([docs.gocd.org][3])
-* Python Launcher (`py -3.8`) y pyenv-win para multi-versiones en Windows. ([GitHub][5])
+* Registrar kernel con ipykernel: `python -m ipykernel install --user --name "venvname" --display-name "Display Name"`.
+* Papermill doc y uso de parámetros: papermill CLI / API.
+* MLflow Projects / Pipelines para reproducibilidad y tracking.
+* GoCD Agent Windows install (para desplegar agentes Windows).
+* pyenv-win para multi-versiones en Windows.
 
 # 11 Lista de chequeo para puesta en marcha (quick checklist)
 
-1. Instalar GoCD server + al menos 1 agente Windows (documentación oficial). ([docs.gocd.org][3])
-2. Instalar Python Launcher y las versiones de Python requeridas o pyenv-win. ([GitHub][5])
+1. Instalar GoCD server + al menos 1 agente Windows (documentación oficial). 
+2. Instalar Python Launcher y las versiones de Python requeridas o pyenv-win. 
 3. Clonar repo con notebooks, specs y scripts.
-4. Configurar MLflow Tracking Server (SQLite para PoC). ([mlflow.org][4])
+4. Configurar MLflow Tracking Server (SQLite para PoC). 
 5. Crear pipelines en GoCD que llamen a `create_venv.py` y `run_notebook.py`.
 6. Probar con una etapa simple (ingest) y revisar que MLflow tiene run + artefactos.
 
