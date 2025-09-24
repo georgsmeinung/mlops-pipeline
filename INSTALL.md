@@ -18,26 +18,12 @@ Antes de empezar, asegurate de tener:
 ## 2. Instalar múltiples versiones de Python
 
 La solución requiere distintas versiones de Python para cada etapa.
-Opciones:
-
-### Opción A: Usar **Python Launcher for Windows** (recomendado si sólo son 2–3 versiones)
-
-1. Descargar instaladores de [Python.org](https://www.python.org/downloads/windows/).
-   Ejemplo: Python 3.8.10, 3.9.13, 3.10.x.
-2. Instalar cada versión con la opción **“Add Python to PATH”** marcada.
-3. Verificar con:
-
-   ```powershell
-   py -3.8 --version
-   py -3.9 --version
-   ```
-
-### Opción B: Usar **pyenv-win** (más flexible, instala versiones bajo demanda)
+Opciones. Usar **pyenv-win** (más flexible, instala versiones bajo demanda)
 
 1. Instalar con PowerShell:
 
    ```powershell
-   Invoke-WebRequest -UseBasicParsing https://pyenv-win.github.io/pyenv-win/install-pyenv-win.ps1 | Invoke-Expression
+   Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1" -OutFile "./install-pyenv-win.ps1"; &"./install-pyenv-win.ps1"
    ```
 2. Reiniciar la terminal.
 3. Instalar versiones necesarias:
@@ -60,7 +46,16 @@ pip install notebook jupyterlab
 
 ---
 
-## 4. Instalar MLflow
+## 4. Clonar este repositorio
+
+```powershell
+git clone https://github.com/georgsmeinung/mlops-pipeline
+cd mlops-pipeline
+```
+
+---
+
+## 5. Instalar MLflow
 
 En el Python base:
 
@@ -78,7 +73,7 @@ Esto abre la UI en `http://127.0.0.1:5000`.
 
 ---
 
-## 5. Instalar GoCD
+## 6. Instalar GoCD
 
 1. Descargar **GoCD Server** y **GoCD Agent (Windows)** desde: [https://www.gocd.org/download/](https://www.gocd.org/download/).
 2. Instalar **GoCD Server** en una máquina Windows (puede ser la misma del equipo).
@@ -87,15 +82,6 @@ Esto abre la UI en `http://127.0.0.1:5000`.
 3. Instalar **GoCD Agent** en la misma máquina o en máquinas de los data scientists.
 
    * Durante la instalación, apuntar el agente al servidor (`localhost` si es la misma máquina).
-
----
-
-## 6. Clonar este repositorio
-
-```powershell
-git clone <URL_DEL_REPO>
-cd <REPO>
-```
 
 ---
 
