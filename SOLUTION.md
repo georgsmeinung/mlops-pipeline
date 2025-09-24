@@ -1,510 +1,227 @@
-# 1 — Arquitectura propuesta (alto nivel)
+# 1 Arquitectura propuesta (alto nivel)
 
-* Repositorio Git con ramas `main` / `dev`. Estructura mínima:
+1. **GoCD server** en una máquina (o VM). Agentes GoCD corriendo en las máquinas Windows de los data scientists o en una máquina Windows central (cada agente puede manejar múltiples pipelines). GoCD orquesta la ejecución: crea/actualiza venvs, ejecuta papermill contra notebooks y registra artefactos en MLflow. ([docs.gocd.org][3])
+2. **MLflow Tracking Server** (servicio Windows o proceso) con backend store (SQLite o SQL Server) y artifact store en disco compartido (carpeta accesible por agentes). MLflow sirve como «ledger» auditable de runs, métricas, artefactos y parámetros. ([mlflow.org][4])
+3. **Repositorios Git**: notebooks (sin outputs), scripts .py, YAML de etapas. GoCD toma commit SHA para cada run (se graba en MLflow).
+4. **Notebooks Jupyter** por etapa (cada notebook hace su trabajo: ingest, limpieza, features, entrenamiento, evaluación, etc.). Se parametrizan y ejecutan por **papermill** (no jupytext). ([GitHub][2])
+5. **Script de creación de venvs** (`create_venv.py`) lee un YAML (por etapa) que especifica python-version y paquetes (lista). El script crea el venv usando el lanzador de Python `py` o `pyenv-win` si se desea automatizar instalación de Pythons. Luego instala paquetes, instala `ipykernel` y registra el kernel para Jupyter con un nombre claro (ej. `stage_ingest_py3.8`). ([GitHub][5])
 
-  ```
-  /mlops-repo
-    /notebooks
-      01-data-prep.ipynb
-      02-feature-eng.ipynb
-      03-train.ipynb
-      04-eval.ipynb
-    /env_specs
-      stage_data_prep.yaml
-      stage_feature_eng.yaml
-      stage_train.yaml
-      stage_eval.yaml
-    /scripts
-      create_venv.bat
-      create_venv.py
-      run_stage.bat
-      run_notebook.py
-    /mlflow
-      (opcional: lugar para artifacts por defecto)
-    Jenkinsfile
-    MLproject (plantilla para MLflow Projects opcional)
-  ```
-* Jenkins (instalado en Windows) ejecuta pipelines declarativos que llaman a los `.bat`.
-* MLflow tracking server corriendo en Windows (servicio o proceso) con `sqlite` (o SQL Server) como backend store y un artifact root en carpeta compartida. Cada run corresponde a la ejecución de un notebook.
-* Auditoría: cada notebook (o la wrapper `run_notebook.py`) registra al inicio:
+# 2 Flujo (step-by-step)
 
-  * git commit (sha)
-  * python version y path del venv
-  * `pip freeze` (guardado como artifact)
-  * timestamp y run\_id (MLflow)
-  * hashes o checksum del notebook original
-* Parametrización y ejecución: usar `papermill` para ejecutar notebooks con parámetros desde la línea (ideal para reproducibilidad). `papermill` permite conservar el notebook ejecutado como artifact.
+1. Data scientist hace commit con cambios, empuja a Git.
+2. GoCD detecta commit y lanza pipeline. Cada **stage** en GoCD corresponde a una etapa MLOps (ingest, preprocess, features, train, eval, package).
+3. Para cada etapa: GoCD ejecuta pasos (tasks):
+   a. `python create_venv.py --spec specs/ingest.yaml --venv-root C:\ml_venvs` — crea/actualiza venv.
+   b. `python run_notebook.py --notebook notebooks/ingest.ipynb --params-file params/ingest_params.yaml` — ejecuta notebook con papermill y dentro del notebook se usan llamadas a `mlflow` para loguear artefactos/metrics. El `run_notebook.py` debe inyectar el tracking URI y metadata (git SHA, stage).
+4. **Papermill** ejecuta el notebook en ese venv (GoCD ejecuta el comando usando el intérprete del venv) y guarda el notebook ejecutado, que se sube como artifact a MLflow (o a almacenamiento de artefactos). ([GitHub][2])
+5. Al finalizar la etapa, se registran en MLflow: parámetros (entrada), métrica(s), artefactos (notebook ejecutado, `requirements.txt`/`pip_freeze.txt`, registro de paquetes y hashes), logs de stdout/stderr, y el Git commit SHA para trazabilidad. MLflow conserva todo para auditoría. ([mlflow.org][1])
 
----
+# 3 Esquema de YAML para especificar cada etapa
 
-# 2 — Convenciones y conceptos clave
-
-* **Cada Stage YAML**: contiene `name`, `python_exe` (ruta al ejecutable python que se usará para crear el venv), `packages` (lista pip), `notebook` (ruta), `kernel_name`, `env_dir`.
-* **Multiples versiones de Python**: instala varios intérpretes Python en Windows (ej. `C:\Python37\python.exe`, `C:\Python38\python.exe`, `C:\Python39\python.exe`, `C:\Python310\python.exe`) — el YAML referencia el path para la etapa. El script usa ese `python_exe -m venv`.
-* **Sin Docker**: todo local en Windows; Jenkins agentes Windows.
-* **Jupyter kernels**: el script registrará `ipykernel` dentro de cada `venv` con un `display_name` legible por etapa.
-* **MLflow**: orquesta y registra; cada pipeline step llama a MLflow para iniciar run, y el notebook / wrapper sube artifacts (notebook ejecutado, pip-freeze, modelos, métricas).
-* **Notebooks como código**: versionados en Git; ejecución automatizada via `papermill` con parámetros.
-
----
-
-# 3 — YAML de ejemplo (especificación de etapa)
-
-Crea `env_specs/stage_train.yaml` (ejemplo):
+Archivo `specs/ingest.yaml` (ejemplo):
 
 ```yaml
-name: train
-python_exe: C:\Python310\python.exe
-env_dir: .venv_train
-kernel_name: mlops-train-py310
-notebook: notebooks/03-train.ipynb
+stage: ingest
+python_version: "3.8"
+venv_name: "ml_ingest_py38"
 packages:
-  - mlflow
-  - papermill
-  - jupyter
-  - ipykernel
-  - scikit-learn
+  - mlflow==1.29.0
+  - papermill>=2.4.0
   - pandas
-  - numpy
-  - pycaret
+  - requests
   - autofeat
   - autoviz
   - dask
   - dtale
   - featuretools
+  - scikit-learn
+  - pycaret
   - sweetviz
   - tabulate
   - tsfresh
   - ydata-profiling
-  - warnings ; # (nota: warnings es módulo stdlib, está listado para claridad)
-  - matplotlib
-  - cloudpickle
-  - tqdm
-  - pip>=22.0
+pip_extra_index: null   # opcional
+pre_commands:
+  - "chcp 65001"        # ejemplo si querés forzar UTF-8 en Windows
+post_commands: []
+kernel_display_name: "ingest (py3.8)"
 ```
 
-(Repite / adapta para otras etapas cambiando `python_exe`, `env_dir`, `packages`.)
+Nota: lista explícita de librerías que pediste; las versiones exactas se manejan por etapa para evitar incompatibilidades.
 
----
+# 4 Scripts claves (concepto + snippets)
 
-# 4 — `create_venv.bat` (llama al script .py correspondiente)
+A continuación ejemplos de scripts minimalistas — adáptalos a tu repositorio. Incluyo el `create_venv.py` y `run_notebook.py`.
 
-Archivo `scripts/create_venv.bat`:
-
-```bat
-@echo off
-REM usage: create_venv.bat ..\env_specs\stage_train.yaml
-SETLOCAL
-if "%~1"=="" (
-  echo Uso: create_venv.bat path\to\spec.yaml
-  exit /b 1
-)
-python scripts\create_venv.py %~1
-IF %ERRORLEVEL% NEQ 0 (
-  echo create_venv fallo con codigo %ERRORLEVEL%
-  exit /b %ERRORLEVEL%
-)
-echo Entorno creado correctamente.
-ENDLOCAL
-```
-
-Este `.bat` asume que hay un Python "gestor" disponible en PATH (por ejemplo Python 3.10) para ejecutar `create_venv.py`. Ese script se encargará de usar el `python_exe` indicado dentro del YAML para crear el venv real.
-
----
-
-# 5 — `create_venv.py` (script generador del entorno Python)
-
-Archivo `scripts/create_venv.py`:
+## create\_venv.py (esqueleto)
 
 ```python
-# create_venv.py
-import sys, os, subprocess, yaml, shutil, hashlib
-from pathlib import Path
-
-def read_spec(p):
-    with open(p, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+"""
+create_venv.py --spec specs/ingest.yaml --venv-root C:\ml_venvs
+"""
+import argparse, subprocess, sys, yaml, os, shutil
 
 def run(cmd, env=None):
-    print("RUN:", " ".join(cmd))
-    res = subprocess.run(cmd, shell=False, env=env)
-    if res.returncode != 0:
-        raise SystemExit(res.returncode)
-
-def write_requirements(reqs, dest):
-    with open(dest, 'w', encoding='utf-8') as f:
-        for r in reqs:
-            f.write(str(r) + "\n")
-
-def main(spec_path):
-    spec = read_spec(spec_path)
-    py = spec.get('python_exe')
-    env_dir = Path(spec.get('env_dir', '.venv_' + spec['name']))
-    packages = spec.get('packages', [])
-    kernel_name = spec.get('kernel_name', spec['name'] + '-kernel')
-
-    if not py or not Path(py).exists():
-        print(f"ERROR: python_exe {py} no existe.")
-        raise SystemExit(2)
-
-    # 1) create venv using the selected python
-    if env_dir.exists():
-        print("El venv ya existe, lo eliminaremos y recrearemos:", env_dir)
-        shutil.rmtree(env_dir)
-    run([py, "-m", "venv", str(env_dir)])
-
-    # 2) pip upgrade
-    pip_exe = env_dir / "Scripts" / "pip.exe"
-    py_in_venv = env_dir / "Scripts" / "python.exe"
-    run([str(pip_exe), "install", "--upgrade", "pip", "setuptools", "wheel"])
-
-    # 3) write a requirements file and install
-    req_file = env_dir / "requirements.txt"
-    write_requirements(packages, req_file)
-    run([str(pip_exe), "install", "-r", str(req_file)])
-
-    # 4) install ipykernel (might already be in packages) and register kernel
-    run([str(py_in_venv), "-m", "ipykernel", "install", "--user", "--name", kernel_name, "--display-name", f"mlops-{spec['name']} ({kernel_name})"])
-
-    # 5) save pip freeze for audit
-    freeze_file = env_dir / "pip-freeze.txt"
-    with open(freeze_file, 'wb') as f:
-        p = subprocess.run([str(pip_exe), "freeze"], stdout=subprocess.PIPE)
-        f.write(p.stdout)
-
-    print("VENV creado:", env_dir)
-    print("Kernel registrado:", kernel_name)
-    print("Pip freeze guardado en:", freeze_file)
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: create_venv.py path\\to\\spec.yaml")
-        raise SystemExit(1)
-    main(sys.argv[1])
-```
-
-Notas:
-
-* Requiere `pyyaml` para el script gestor (el `python` que ejecuta `create_venv.py`). Si ese Python gestor no tiene `pyyaml`, instálalo con `pip install pyyaml`.
-* El script usa el `python_exe` del YAML para crear el venv (así puedes tener varios Pythons instalados).
-
----
-
-# 6 — Registrar kernel y usarlo interactivamente
-
-* El script ya registra el kernel con `ipykernel`. En Jupyter Desktop / Lab aparecerá `mlops-<stage> (kernel_name)`.
-* El cientista puede abrir el notebook y seleccionar el kernel para prototipado interactivo.
-
----
-
-# 7 — Ejecutar notebook y auditar: `run_stage.bat` + `run_notebook.py`
-
-`run_stage.bat`:
-
-```bat
-@echo off
-REM usage: run_stage.bat env_specs\stage_train.yaml
-SETLOCAL
-if "%~1"=="" (
-  echo Uso: run_stage.bat path\to\spec.yaml
-  exit /b 1
-)
-python scripts\run_notebook.py %~1
-IF %ERRORLEVEL% NEQ 0 (
-  echo run_stage fallo con codigo %ERRORLEVEL%
-  exit /b %ERRORLEVEL%
-)
-echo Ejecución completada.
-ENDLOCAL
-```
-
-`run_notebook.py` — ejecuta con papermill y registra en MLflow:
-
-```python
-# run_notebook.py
-import sys, os, subprocess, yaml, json
-from pathlib import Path
-import time
-import subprocess
-
-def load_spec(p):
-    with open(p, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
-
-def run(cmd, env=None):
-    print("RUN:", " ".join(cmd))
-    res = subprocess.run(cmd, shell=False, env=env)
-    if res.returncode != 0:
-        raise SystemExit(res.returncode)
-
-def main(spec_path):
-    spec = load_spec(spec_path)
-    env_dir = Path(spec.get('env_dir'))
-    notebook = Path(spec.get('notebook'))
-    name = spec.get('name')
-    if not env_dir.exists():
-        raise SystemExit(f"Venv {env_dir} no encontrado. Cree el venv primero.")
-
-    py_in_venv = env_dir / "Scripts" / "python.exe"
-    pip_freeze = env_dir / "pip-freeze.txt"
-    # Ensure papermill is available
-    pm = env_dir / "Scripts" / "papermill.exe"
-    if not pm.exists():
-        # try python -m papermill
-        pm_cmd = [str(py_in_venv), "-m", "papermill"]
-    else:
-        pm_cmd = [str(pm)]
-
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    out_nb = notebook.with_name(notebook.stem + f"_executed_{timestamp}.ipynb")
-
-    # metadata to pass as papermill params
-    params = {
-        "mlflow_tracking_uri": os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000"),
-        "stage_name": name,
-        "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip() if Path(".git").exists() else "no-git",
-        "venv_path": str(env_dir),
-        "venv_pip_freeze": str(pip_freeze),
-    }
-    # build papermill command
-    cmd = pm_cmd + [str(notebook), str(out_nb), "-p", "params", json.dumps(params)]
-    # Alternative: pass parameters as multiple -p key val pairs; here we pass one param named 'params'
-    run(cmd)
-
-    # After execution, log artifacts to mlflow using CLI in the venv python:
-    # create a small python snippet to call mlflow.log_artifact etc.
-    # For simplicity we call mlflow CLI (if installed) or a helper script.
-    helper = Path("scripts") / "mlflow_helper.py"
-    run([str(py_in_venv), str(helper), str(out_nb), str(pip_freeze), name])
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: run_notebook.py path\\to\\spec.yaml")
-        raise SystemExit(1)
-    main(sys.argv[1])
-```
-
-`mlflow_helper.py` (simple, as artifact uploader; se queda en `scripts`):
-
-```python
-# mlflow_helper.py
-import sys
-import mlflow
-from pathlib import Path
+    print(">", cmd)
+    proc = subprocess.run(cmd, shell=True, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    print(proc.stdout.decode(errors='ignore'))
 
 def main():
-    if len(sys.argv) < 4:
-        print("Uso: mlflow_helper.py executed_notebook pip_freeze stage_name")
-        raise SystemExit(1)
-    executed_notebook = Path(sys.argv[1])
-    pip_freeze = Path(sys.argv[2]) if sys.argv[2] else None
-    stage = sys.argv[3]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--spec", required=True)
+    parser.add_argument("--venv-root", required=True)
+    args = parser.parse_args()
 
-    mlflow.set_tracking_uri("http://localhost:5000")
-    with mlflow.start_run(run_name=f"notebook-{stage}-{executed_notebook.stem}"):
-        mlflow.log_param("stage", stage)
-        mlflow.log_artifact(str(executed_notebook))
-        if pip_freeze and pip_freeze.exists():
-            mlflow.log_artifact(str(pip_freeze))
-        # could also log model files, metrics written by the notebook into a known path, etc.
+    spec = yaml.safe_load(open(args.spec))
+    venv_name = spec["venv_name"]
+    py_ver = spec["python_version"]
+    venv_path = os.path.join(args.venv_root, venv_name)
+
+    # 1) Create venv using Python launcher (py -3.8 -m venv)
+    # On Windows, 'py -3.8' will call the installed Python 3.8. Requires Python versions installed.
+    create_cmd = f'py -{py_ver} -m venv "{venv_path}"'
+    run(create_cmd)
+
+    # 2) Upgrade pip and install wheel
+    pip_exec = os.path.join(venv_path, "Scripts", "pip.exe")
+    run(f'"{pip_exec}" install --upgrade pip setuptools wheel')
+
+    # 3) Install packages from spec
+    packages = spec.get("packages", [])
+    if packages:
+        pkg_list = " ".join(packages)
+        run(f'"{pip_exec}" install {pkg_list}')
+
+    # 4) Install ipykernel and register kernel
+    run(f'"{pip_exec}" install ipykernel')
+    python_exec = os.path.join(venv_path, "Scripts", "python.exe")
+    kernel_name = venv_name
+    display_name = spec.get("kernel_display_name", kernel_name)
+    run(f'"{python_exec}" -m ipykernel install --user --name "{kernel_name}" --display-name "{display_name}"')
+
+    # 5) Save pip freeze for audit
+    run(f'"{pip_exec}" freeze > "{venv_path}_pip_freeze.txt"')
+
+    print("Venv ready:", venv_path)
 
 if __name__ == "__main__":
     main()
 ```
 
-Notas:
+Comentarios importantes:
 
-* `run_notebook.py` asume que `papermill` está instalado en el venv. Si no lo está, `create_venv.py` debe incluirlo.
-* `mlflow_helper.py` usa la API `mlflow` para crear un run y subir artifacts; debe ejecutarse con el `python` del venv para usar la misma instalación `mlflow`.
+* En Windows recomiendo usar el **Python Launcher** (`py -3.8`) para crear venv con la versión específica si ya tenés esa versión instalada. Si necesitás instalar versiones de Python automáticamente, usar **pyenv-win** o instaladores silenciosos (winget/choco) es una opción. ([GitHub][5])
 
----
-
-# 8 — Plantilla MLproject (opcional) para MLflow Projects
-
-Archivo `MLproject` en repo raíz:
-
-```yaml
-name: mlops-pipeline
-conda_env: null
-# usamos venv no conda, pero MLproject puede ejecutar comando
-entry_points:
-  train:
-    parameters:
-      spec_path: {type: str, default: "env_specs/stage_train.yaml"}
-    command: "python scripts/run_notebook.py {spec_path}"
-  data_prep:
-    parameters:
-      spec_path: {type: str, default: "env_specs/stage_data_prep.yaml"}
-    command: "python scripts/run_notebook.py {spec_path}"
-```
-
-Con esto, MLflow puede lanzar `mlflow run . -e train -P spec_path=...`.
-
----
-
-# 9 — Jenkinsfile (Declarativo, Windows agent)
-
-Ejemplo `Jenkinsfile` (coloca en repo):
-
-```groovy
-pipeline {
-  agent { label 'windows' } // asegúrate de tener un node Windows con ese label
-  options {
-    timestamps()
-  }
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
-    }
-    stage('Create venvs') {
-      steps {
-        bat 'scripts\\create_venv.bat env_specs\\stage_data_prep.yaml'
-        bat 'scripts\\create_venv.bat env_specs\\stage_feature_eng.yaml'
-        bat 'scripts\\create_venv.bat env_specs\\stage_train.yaml'
-        bat 'scripts\\create_venv.bat env_specs\\stage_eval.yaml'
-      }
-    }
-    stage('Run pipeline (MLflow orchestrado)') {
-      steps {
-        // Ejecuta etapas en secuencia; puedes paralelizar si es seguro
-        bat 'scripts\\run_stage.bat env_specs\\stage_data_prep.yaml'
-        bat 'scripts\\run_stage.bat env_specs\\stage_feature_eng.yaml'
-        bat 'scripts\\run_stage.bat env_specs\\stage_train.yaml'
-        bat 'scripts\\run_stage.bat env_specs\\stage_eval.yaml'
-      }
-    }
-  }
-  post {
-    always {
-      archiveArtifacts artifacts: '**/*_executed_*.ipynb', allowEmptyArchive: true
-      junit allowEmptyResults: true, testResults: '**/test-reports/*.xml'
-    }
-  }
-}
-```
-
-Notas:
-
-* Jenkins debe ejecutar con credenciales que tengan permisos para crear kernels ipykernel (instalación `--user`), o registra en sistema si prefieres `--prefix`.
-* Asegúrate que `git` esté en PATH en el agente para que `git rev-parse HEAD` funcione.
-
----
-
-# 10 — MLflow tracking server en Windows (mínimo, para pruebas)
-
-Ejecuta en la máquina que ejerce de tracking server (puede ser la misma del Jenkins agent, o otra accesible):
-
-```cmd
-set MLFLOW_HOME=C:\mlflow_server
-mkdir %MLFLOW_HOME%
-cd %MLFLOW_HOME%
-REM create a sqlite file and folder for artifacts
-python -m pip install mlflow
-mkdir artifacts
-mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root %MLFLOW_HOME%/artifacts --host 0.0.0.0 --port 5000
-```
-
-Sugerencia: configurar este comando como un servicio de Windows (por ejemplo NSSM) para que siempre esté levantado.
-
----
-
-# 11 — Notebooks: snippet recomendado al inicio (para auditar)
-
-En cada notebook, en la primera celda (ejecutable), usa algo así (Python):
+## run\_notebook.py (esqueleto)
 
 ```python
-# header_audit.py (snippet to paste in first cell)
-import mlflow, os, sys, json, subprocess, time
-from pathlib import Path
+"""
+run_notebook.py --venv C:\ml_venvs\ml_ingest_py38 --notebook notebooks/ingest.ipynb --output out/ingest_out.ipynb
+"""
+import argparse, subprocess, os, sys, yaml
 
-def capture_env_info():
-    info = {}
-    info['timestamp'] = time.strftime("%Y-%m-%d %H:%M:%S")
-    info['python_executable'] = sys.executable
-    info['python_version'] = sys.version
-    try:
-        info['git_commit'] = subprocess.check_output(['git','rev-parse','HEAD']).decode().strip()
-    except Exception:
-        info['git_commit'] = 'no-git'
-    try:
-        info['notebook_path'] = __file__
-    except:
-        info['notebook_path'] = None
-    return info
+def run(cmd, env=None):
+    print(">", cmd)
+    subprocess.run(cmd, shell=True, check=True)
 
-env_info = capture_env_info()
-print(env_info)
-# Start MLflow run if not already started by wrapper
-try:
-    mlflow.active_run()
-except Exception:
-    pass
-# Save env_info as artifact later via mlflow.log_dict if desired
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--venv", required=True)
+    parser.add_argument("--notebook", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--params-file", required=False)
+    args = parser.parse_args()
+
+    python_exec = os.path.join(args.venv, "Scripts", "python.exe")
+    papermill = f'"{python_exec}" -m papermill "{args.notebook}" "{args.output}"'
+    if args.params_file:
+        papermill += f' -f "{args.params_file}"'
+
+    # Optional: set MLflow tracking URI (env var) before running
+    # os.environ["MLFLOW_TRACKING_URI"] = "http://mlflow-server:5000"
+    run(papermill)
+
+if __name__ == "__main__":
+    main()
 ```
 
-(Se puede ejecutar desde la wrapper; la idea es que cada notebook documente env y git.)
+# 5 Cómo queda la auditoría (qué se guarda y dónde)
 
----
+Para que cada ejecución sea auditable, graba lo siguiente en MLflow y como artefactos (archivo en disco):
 
-# 12 — Manejo de incompatibilidades de versiones Python
+* **Git commit SHA** (desde GoCD): lo pasás como param a papermill / MLflow.
+* **Notebook original (clean)** y **notebook ejecutado** (papermill produce `out.ipynb`). Guardar ambos. ([GitHub][2])
+* **Environment spec**: el `specs/*.yaml` usado.
+* **requirements/pip-freeze** del venv (`pip freeze > pip_freeze.txt`) y/o `pip list --format=json`.
+* **Python version** y path del venv (`sys.version`, `sys.executable`).
+* **System logs** (stdout/stderr capturado por GoCD).
+* **MLflow run**: métricas, parámetros, artefactos (notebook ejecutado, modelos, etc.). Todo esto queda indexado y recuperable. ([mlflow.org][1])
 
-* **Estrategia**: instala en la máquina los Pythons requeridos (inversión única). Cada YAML apunta a su `python_exe`. Esto evita necesitar `pyenv` o contenedores.
-* **Alternativa ligera**: usar `venv` + `pip` con `--constraint` files o wheels precompiladas si hay paquetes con compilación (por ejemplo `tsfresh` o `dask`). Para paquetes con dependencias nativas, procura tener Microsoft Build Tools si hace falta.
-* Documenta en README qué Python versions están soportadas y proporciona links / instaladores de Python embebidos (ej. instaladores embebidos de python.org).
+# 6 Gestión de múltiples versiones de Python en Windows
 
----
+Opciones prácticas:
 
-# 13 — Buenas prácticas de auditoría (implementarlas en el repo)
+* **Python Launcher (`py -3.8`)**: si en las máquinas ya están instaladas las versiones de Python que necesitas, el launcher es la forma más sencilla y reproducible para crear venvs con la versión deseada. Ej.: `py -3.9 -m venv C:\ml_venvs\env39`. ([GitHub][5])
+* **pyenv-win**: permite instalar y gestionar múltiples Pythons programáticamente (similar a pyenv en Unix). Útil si necesitás que GoCD instale automáticamente Pythons no presentes. Requiere instalación y elevación inicial. ([GitHub][6])
+  Decisión práctica: para un equipo de data scientists no tan técnicos, recomiendo **preinstalar** las versiones de Python más comunes en las máquinas agentes (o centralizar agentes con las versiones necesarias). Automatizar instalaciones con `winget` o `choco` es posible pero agrega complejidad.
 
-* En cada run, guardar como artifacts:
+# 7 GoCD: cómo modelar el pipeline (ideas concretas)
 
-  * notebook ejecutado (`*_executed_*.ipynb`)
-  * `pip-freeze.txt` del venv
-  * `git_commit` y `git_diff` (si hay cambios no committeados)
-  * logs y stdout/stderr (capturados por Jenkins)
-  * métricas y modelos (pickle, joblib, ONNX)
-* Forzar que notebooks usen MLflow para loggear métricas y parámetros en celdas clave.
-* Mantener una convención estricta de nombres y una carpeta `artifacts/<run_id>/...` si quieres redundancia local además de MLflow.
+* **Pipeline**: `mlops_pipeline`
+* **Stages**: `setup_env_ingest` -> `run_ingest` -> `setup_env_features` -> `run_features` -> `setup_env_train` -> `run_train` ...
+* **Jobs/Tasks**: cada `setup_env_*` corre `create_venv.py --spec specs/<stage>.yaml`; cada `run_*` corre `run_notebook.py` apuntando al venv correspondiente.
+* **Artifacts**: configurar GoCD para recoger artefactos (notebook ejecutado, pip\_freeze, logs) y subirlos al artifact store; además se suben a MLflow en cada run. ([docs.gocd.org][3])
 
----
+# 8 Pautas prácticas y recomendaciones (problemas y mitigaciones)
 
-# 14 — Consideraciones operativas / riesgos y mitigaciones
+* **Incompatibilidades entre paquetes**: muchas de las librerías que pediste tienen dependencias complejas. Evitar forzar versiones globales; especificar versiones por etapa y testear localmente.
+* **Tamaño / tiempo de instalación**: instalar docenas de librerías en cada run es lento. Estrategia: crear venvs «persistentes» por etapa (no recrear siempre) y sólo actualizar si cambia el YAML (GoCD puede comparar checksum del YAML y recrear solo si cambió).
+* **Seguridad / privilegios**: registro de kernels ipykernel --user no requiere admin. Instalar Python a nivel sistema o pyenv-win puede requerir permisos.
+* **MLflow artifact store**: para auditoría robusta, usar un disco compartido con backups o un storage central.
+* **Testing local**: proveer scripts `dev_bootstrap.bat` para que el data scientist pueda crear venvs y kernels localmente (misma lógica que GoCD).
 
-* Riesgo: dependencias que requieren compilación (p. ej. `tsfresh`) fallan en Windows. Mitigación: usar ruedas precompiladas (`pip wheel`) o MS Build Tools, o usar versiones de paquete conocidas buenas. Documenta en cada spec `notes` con instrucciones.
-* Riesgo: múltiples Pythons requieren instalación administradora. Documentar y proveer scripts de instalación o indicar instaladores.
-* Riesgo: Jenkins agent que corre múltiples venvs puede consumir disco. Mantener limpieza periódica.
-* Riesgo: ipykernel `--user` instala en perfil del usuario que ejecuta Jenkins; si Jenkins corre bajo servicio distinto, registrar kernels en un path accesible o configurar Jupyter para usar kernels desde cada venv (jupyter lab/spawn de kernels se basará en `~/.local/...`). Alternativa: no registrar kernel y usar `python -m papermill` para ejecución automática; registro es solo para prototipado interactivo por el data scientist.
+# 9 Ejemplo de minimal MLflow usage dentro del notebook
 
----
+Dentro de la primera celda del notebook:
 
-# 15 — Checklist de implementación (acciones concretas)
+```python
+import mlflow, mlflow.sklearn, getpass, platform, json, subprocess, sys
 
-1. Instalar en la máquina los intérpretes Python que vayan a usarse.
-2. Asegurar un Python "gestor" con `pyyaml` para correr `create_venv.py`.
-3. Pegar los scripts `create_venv.py`, `create_venv.bat`, `run_notebook.py`, `run_stage.bat`, `mlflow_helper.py`.
-4. Crear archivos `env_specs/*.yaml` para cada etapa con `python_exe` apuntando al Python deseado.
-5. Instalar MLflow y ejecutar `mlflow server` como servicio.
-6. Configurar Jenkins Windows agent y pipeline con el `Jenkinsfile` de ejemplo.
-7. Versionar notebooks y ejecutar una run completa; revisar MLflow UI en `http://<mlflow-host>:5000`.
-8. Ajustar `packages` en YAML si alguna instalación falla (usar ruedas o pin versions).
+mlflow.set_tracking_uri("file:///C:/mlflow_artifacts")  # o http://mlflow-server:5000
+mlflow.set_experiment("ingest-experiment")
 
----
+with mlflow.start_run(run_name="ingest"):
+    mlflow.log_param("git_commit", "<GIT_SHA_FROM_ENV>")
+    mlflow.log_param("stage", "ingest")
+    mlflow.log_param("python_version", sys.version)
+    # guardar pip freeze
+    import pkg_resources, io
+    freeze = subprocess.check_output([sys.executable, "-m", "pip", "freeze"]).decode()
+    mlflow.log_text(freeze, "pip_freeze.txt")
+    # ... resto del notebook ... 
+    mlflow.log_artifact("out/ingest_out.ipynb")
+```
 
-# 16 — Extras creativos y prácticos (ideas fuera de lo obvio)
+(Mantener este fragmento en la plantilla de notebook para asegurar consistencia).
 
-* Mantén un directorio `wheels_cache/` con ruedas `.whl` aprobadas para instalaciones offline; `create_venv.py` puede usar `pip install --no-index --find-links=../wheels_cache -r requirements.txt`.
-* Añade una etapa en Jenkins que calcule un “environment fingerprint” (hash de `pip-freeze.txt` + git sha) y lo compare con runs anteriores para detectar drift.
-* Implementa una pequeña UI interna (Flask) que muestre diagramas de pipeline y enlace a runs de MLflow, útil para stakeholders no técnicos.
-* Usa `papermill` para testing: tener notebooks “smoke tests” que se ejecutan en cada PR con datasets pequeños.
+# 10 Comprobaciones y referencias rápidas
 
----
+* Registrar kernel con ipykernel: `python -m ipykernel install --user --name "venvname" --display-name "Display Name"`. ([ipython.readthedocs.io][7])
+* Papermill doc y uso de parámetros: papermill CLI / API. ([papermill.readthedocs.io][8])
+* MLflow Projects / Pipelines para reproducibilidad y tracking. ([mlflow.org][4])
+* GoCD Agent Windows install (para desplegar agentes Windows). ([docs.gocd.org][3])
+* Python Launcher (`py -3.8`) y pyenv-win para multi-versiones en Windows. ([GitHub][5])
 
-# 17 — Archivos listos para copiar (resumen rápido)
+# 11 Lista de chequeo para puesta en marcha (quick checklist)
 
-* `env_specs/*.yaml` (uno por etapa) — ejemplo incluido.
-* `scripts/create_venv.bat` + `scripts/create_venv.py` — para crear venvs y registrar kernels.
-* `scripts/run_stage.bat` + `scripts/run_notebook.py` + `scripts/mlflow_helper.py` — para ejecutar notebooks y subir artifacts a MLflow.
-* `Jenkinsfile` — pipeline de ejemplo.
-* `MLproject` — opcional para invocación con `mlflow run`.
+1. Instalar GoCD server + al menos 1 agente Windows (documentación oficial). ([docs.gocd.org][3])
+2. Instalar Python Launcher y las versiones de Python requeridas o pyenv-win. ([GitHub][5])
+3. Clonar repo con notebooks, specs y scripts.
+4. Configurar MLflow Tracking Server (SQLite para PoC). ([mlflow.org][4])
+5. Crear pipelines en GoCD que llamen a `create_venv.py` y `run_notebook.py`.
+6. Probar con una etapa simple (ingest) y revisar que MLflow tiene run + artefactos.
+
+# 12 Riesgos técnicos y alternativas
+
+* Si la instalación de múltiples Pythons en cada estación resulta engorrosa, la alternativa más simple y robusta es: **centralizar agentes** en una máquina Windows con todas las versiones instaladas, y que los DS trabajen en sus máquinas localmente sólo para prototipado.
+* Si luego querés escalar a producción, pasar a contenedores o entornos administrados (Azure ML, SageMaker) facilitará despliegues reproducibles — pero entiendo que querés evitar Docker ahora.

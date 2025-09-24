@@ -1,130 +1,158 @@
-# mlops-pipeline con MLflow, Jenkins y Entornos Virtuales Python en Windows
+# MLOps Pipeline en Windows con GoCD, MLflow y Jupyter
 
-## Descripción General
+Este repositorio contiene una solución **MLOps auditable** para equipos de ciencia de datos que trabajan en **Windows**, sin necesidad de contenedores (Docker/Kubernetes).
+El diseño permite ejecutar pipelines reproducibles con **GoCD** y **MLflow**, creando entornos virtuales específicos por etapa mediante `venv`, con notebooks ejecutados de forma automatizada usando **papermill** y disponibles como kernels de **Jupyter** para prototipado interactivo.
 
-Este proyecto implementa una solución de **MLOps auditable** en Windows, diseñada para equipos de ciencia de datos que prefieren trabajar directamente con **Jupyter Notebooks**. El flujo completo está orquestado con **MLflow** y **Jenkins**, permitiendo:
+---
 
-* Auditoría de cada etapa del pipeline de ML.
-* Ejecución interactiva en notebooks.
-* Creación automática de entornos virtuales (`venv`) con dependencias específicas por etapa.
-* Gestión de versiones de Python y librerías mediante archivos **YAML**.
-* Integración con Jenkins para la automatización y trazabilidad.
+## 🚀 Características principales
 
-## Componentes Clave
+* **Orquestación con GoCD**: cada etapa del pipeline es un *stage* en GoCD.
+* **Trazabilidad con MLflow**: parámetros, métricas, notebooks ejecutados y ambientes quedan registrados.
+* **Entornos aislados por etapa**: cada etapa define su propio `venv` y versión de Python mediante un archivo YAML.
+* **Compatibilidad con múltiples versiones de Python**: se aprovecha el *Python Launcher for Windows* (`py -3.8`, `py -3.9`, etc.) o [pyenv-win](https://github.com/pyenv-win/pyenv-win).
+* **Automatización de notebooks**: notebooks ejecutados con [papermill](https://papermill.readthedocs.io/).
+* **Prototipado interactivo**: los `venv` creados se registran como kernels de Jupyter para usar manualmente.
+* **Auditoría completa**: se guarda YAML de especificación, `pip freeze`, notebooks ejecutados y logs de GoCD/MLflow.
 
-### 1. Orquestación del Pipeline
+---
 
-* **MLflow** gestiona:
-
-  * Tracking de experimentos.
-  * Registro de modelos.
-  * Ejecución de pipelines.
-
-### 2. Automatización DevOps
-
-* **Jenkins** controla la ejecución del pipeline:
-
-  * Disparadores manuales o automáticos (push a `main`, merge PR, cron jobs).
-  * Ejecución de scripts `.bat` para creación de entornos.
-  * Llamado a notebooks mediante `papermill` o `nbconvert`.
-
-### 3. Gestión de Entornos
-
-* Cada etapa del pipeline define sus requisitos en un archivo YAML:
-
-  ```yaml
-  python_version: "3.10"
-  dependencies:
-    - scikit-learn==1.5.0
-    - pycaret
-    - ydata-profiling
-  ```
-* Script `.py` genera el entorno virtual (`python -m venv`) y lo registra como kernel Jupyter.
-* Cada entorno se activa dinámicamente en la etapa correspondiente.
-
-### 4. Librerías AutoML soportadas
-
-Los entornos pueden incluir herramientas como:
-
-* `autofeat`
-* `autoviz`
-* `dask`
-* `dtale`
-* `featuretools`
-* `scikit-learn`
-* `pycaret`
-* `sweetviz`
-* `tabulate`
-* `tsfresh`
-* `ydata-profiling`
-
-### 5. Auditoría y Trazabilidad
-
-* Cada notebook se ejecuta con parámetros inyectados desde Jenkins.
-* Resultados, métricas y modelos se registran automáticamente en **MLflow**.
-* Se conserva historial de versiones de código, entornos y outputs.
-
-## Estructura del Repositorio
+## 📂 Estructura del repositorio
 
 ```
-mlops-pipeline/
-├── notebooks/
-│   ├── 01_ingesta.ipynb
-│   ├── 02_preprocesamiento.ipynb
-│   ├── 03_entrenamiento.ipynb
-│   └── 04_evaluacion.ipynb
-├── environments/
-│   ├── 01_ingesta.yaml
-│   ├── 02_preprocesamiento.yaml
-│   ├── 03_entrenamiento.yaml
-│   └── 04_evaluacion.yaml
-├── scripts/
-│   ├── create_env.py
-│   ├── run_notebook.py
-│   ├── create_env.bat
-│   └── run_pipeline.bat
-├── jenkins/
-│   └── Jenkinsfile
-├── mlruns/   # Tracking MLflow
-└── README.md
+.
+├── notebooks/           # Notebooks Jupyter (uno por etapa del pipeline)
+│   ├── ingest.ipynb
+│   ├── features.ipynb
+│   └── train.ipynb
+│
+├── specs/               # Archivos YAML con especificaciones de entornos por etapa
+│   ├── ingest.yaml
+│   ├── features.yaml
+│   └── train.yaml
+│
+├── params/              # Archivos YAML con parámetros de notebooks
+│   ├── ingest_params.yaml
+│   └── train_params.yaml
+│
+├── scripts/             # Scripts de automatización
+│   ├── create_venv.py   # Crea venv desde especificación YAML y lo registra como kernel Jupyter
+│   └── run_notebook.py  # Ejecuta un notebook con papermill en un venv dado
+│
+├── gocd/                # Ejemplos de configuración de pipelines GoCD
+│   └── pipeline_config.xml
+│
+└── README.md            # Este archivo
 ```
 
-## Flujo de Ejecución
+---
 
-1. El usuario actualiza código o notebooks y hace `git push`.
-2. Jenkins detecta cambios y ejecuta el pipeline:
+## 📑 Ejemplo de especificación de etapa (YAML)
 
-   * Lee especificaciones YAML de cada etapa.
-   * Crea el `venv` correspondiente.
-   * Registra el kernel en Jupyter.
-   * Ejecuta el notebook con parámetros.
-3. MLflow guarda resultados y métricas.
-4. El equipo puede revisar resultados en MLflow UI o Jupyter.
+`specs/ingest.yaml`:
 
-## Requisitos Previos
-
-* **Windows 10/11**
-* **Python (múltiples versiones instaladas en el sistema)**
-* **Jenkins** instalado como servicio
-* **MLflow** instalado globalmente
-* **Jupyter Notebook/Lab** instalado globalmente
-
-## Ejemplo de Uso
-
-Crear entorno para la etapa de entrenamiento:
-
-```bash
-scripts\create_env.bat environments\03_entrenamiento.yaml
+```yaml
+stage: ingest
+python_version: "3.8"
+venv_name: "ml_ingest_py38"
+packages:
+  - mlflow==1.29.0
+  - papermill>=2.4.0
+  - pandas
+  - requests
+  - autofeat
+  - autoviz
+  - dask
+  - dtale
+  - featuretools
+  - scikit-learn
+  - pycaret
+  - sweetviz
+  - tabulate
+  - tsfresh
+  - ydata-profiling
+kernel_display_name: "Ingest (py3.8)"
 ```
 
-Ejecutar pipeline completo:
+---
 
-```bash
-scripts\run_pipeline.bat
-```
+## ⚙️ Uso local (prototipado)
 
-## Posibles Futuras Extensiones
+1. **Crear venv de una etapa**:
 
-* Integración con Metabase/PowerBI para visualización de resultados.
-* Control de versiones de datasets con DVC.
-* Soporte para ejecución distribuida con Dask.
+   ```bash
+   python scripts/create_venv.py --spec specs/ingest.yaml --venv-root C:\ml_venvs
+   ```
+
+   Esto:
+
+   * Crea `C:\ml_venvs\ml_ingest_py38\`
+   * Instala librerías y `ipykernel`
+   * Registra kernel Jupyter con nombre `Ingest (py3.8)`
+   * Exporta `pip_freeze.txt` para auditoría
+
+2. **Ejecutar un notebook con papermill**:
+
+   ```bash
+   python scripts/run_notebook.py \
+       --venv C:\ml_venvs\ml_ingest_py38 \
+       --notebook notebooks/ingest.ipynb \
+       --output out/ingest_out.ipynb \
+       --params-file params/ingest_params.yaml
+   ```
+
+3. **Abrir Jupyter Lab/Notebook** y seleccionar el kernel `Ingest (py3.8)` para edición interactiva.
+
+---
+
+## 🔄 Flujo en GoCD
+
+* Cada pipeline en GoCD incluye dos *jobs* por etapa:
+
+  1. `setup_env_stageX`: ejecuta `create_venv.py` para la etapa.
+  2. `run_stageX`: ejecuta `run_notebook.py` con el venv recién creado.
+
+* GoCD recoge artefactos (`out.ipynb`, `pip_freeze.txt`) y los sube a MLflow junto con métricas y parámetros.
+
+---
+
+## 🗄️ Auditoría y MLflow
+
+Cada run en MLflow incluye:
+
+* Parámetros (stage, git SHA, etc.)
+* Notebook ejecutado (`*_out.ipynb`)
+* Especificación YAML de la etapa
+* `pip_freeze.txt`
+* Métricas y resultados del notebook
+
+---
+
+## 📌 Requisitos previos
+
+* Windows 10/11
+* [GoCD Server & Agent](https://www.gocd.org/download/) instalados en Windows
+* [MLflow](https://mlflow.org/) instalado y configurado con backend store (ej: SQLite)
+* [Python Launcher for Windows](https://docs.python.org/3/using/windows.html#launcher) o [pyenv-win](https://github.com/pyenv-win/pyenv-win) para manejar múltiples versiones de Python
+* Jupyter Notebook / Lab instalado en el sistema base
+* Git para control de versiones
+
+---
+
+## ✅ Checklist para despliegue inicial
+
+1. Instalar versiones de Python necesarias (ej. 3.8, 3.9, 3.10).
+2. Configurar MLflow tracking server (ejemplo: `mlflow ui --backend-store-uri sqlite:///mlflow.db`).
+3. Crear pipeline en GoCD con stages `setup_env` + `run_notebook` para cada etapa.
+4. Ejecutar primer pipeline (`ingest`) y validar que MLflow registra resultados.
+5. Confirmar que los kernels de Jupyter aparecen disponibles para edición manual.
+
+---
+
+## 🔮 Futuras mejoras
+
+* Cache de venvs para reducir tiempos de instalación.
+* Integración con almacenamiento remoto de artefactos (S3, GCS, Azure Blob).
+* Soporte opcional para instalación automática de Python con `winget` o `choco`.
+* Posible migración a contenedores en una etapa posterior (no requerido en este diseño).
+
