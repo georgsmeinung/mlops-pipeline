@@ -1,6 +1,6 @@
 """
 Uso: 
-python scripts/create_venv.py --spec specs/ingest.yaml --venv-root ./ml_venvs
+python scripts/create_venv.py --spec specs/optimization.yaml --venv-root ./ml_venvs
 """
 import argparse, subprocess, sys, yaml, os
 from pathlib import Path
