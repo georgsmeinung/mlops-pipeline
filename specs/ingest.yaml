@@ -1,5 +1,5 @@
 stage: ingest
-python_version: "3.8"
+python_version: "3.8.10"
 venv_name: "ml_ingest_py38"
 packages:
   - mlflow==1.29.0

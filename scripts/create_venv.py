@@ -1,5 +1,6 @@
 """
-create_venv.py --spec specs/ingest.yaml --venv-root C:\ml_venvs
+Uso: 
+python scripts/create_venv.py --spec specs/ingest.yaml --venv-root ./ml_venvs
 """
 import argparse, subprocess, sys, yaml, os, shutil
 
@@ -7,6 +8,25 @@ def run(cmd, env=None):
     print(">", cmd)
     proc = subprocess.run(cmd, shell=True, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     print(proc.stdout.decode(errors='ignore'))
+
+def check_and_install_python_version(py_ver):
+    """Check if Python version is installed with pyenv, install if not"""
+    try:
+        # Check if the version is already installed
+        proc = subprocess.run(f'pyenv versions --bare', shell=True, capture_output=True, text=True)
+        installed_versions = proc.stdout.strip().split('\n')
+        
+        if py_ver in installed_versions:
+            print(f"Python {py_ver} is already installed")
+            return
+        
+        print(f"Python {py_ver} not found. Installing...")
+        run(f'pyenv install {py_ver}')
+        print(f"Python {py_ver} installed successfully")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"Error checking/installing Python version: {e}")
+        sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -19,12 +39,18 @@ def main():
     py_ver = spec["python_version"]
     venv_path = os.path.join(args.venv_root, venv_name)
 
-    # 1) Create venv using Python launcher (py -3.8 -m venv)
-    # On Windows, 'py -3.8' will call the installed Python 3.8. Requires Python versions installed.
-    create_cmd = f'py -{py_ver} -m venv "{venv_path}"'
+    # 1) Check if Python version is installed, install if not
+    check_and_install_python_version(py_ver)
+    
+    # 2) Create venv using pyenv
+    # Use pyenv to switch to the specified Python version and create venv
+    create_cmd = f'pyenv exec python -m venv "{venv_path}"'
+    
+    # Set the local Python version for this operation
+    run(f'pyenv local {py_ver}')
     run(create_cmd)
 
-    # 2) Upgrade pip and install wheel
+    # 3) Upgrade pip and install wheel
     pip_exec = os.path.join(venv_path, "Scripts", "pip.exe")
     run(f'"{pip_exec}" install --upgrade pip setuptools wheel')
 
