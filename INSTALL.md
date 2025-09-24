@@ -66,7 +66,7 @@ pip install mlflow==1.29.0
 Configurar un backend sencillo con SQLite:
 
 ```powershell
-mlflow ui --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
+mlflow ui --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root ./mlruns
 ```
 
 Esto abre la UI en `http://127.0.0.1:5000`.
