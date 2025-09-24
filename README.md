@@ -10,7 +10,7 @@ El diseño permite ejecutar pipelines reproducibles con **GoCD** y **MLflow**, c
 * **Orquestación con GoCD**: cada etapa del pipeline es un *stage* en GoCD.
 * **Trazabilidad con MLflow**: parámetros, métricas, notebooks ejecutados y ambientes quedan registrados.
 * **Entornos aislados por etapa**: cada etapa define su propio `venv` y versión de Python mediante un archivo YAML.
-* **Compatibilidad con múltiples versiones de Python**: se aprovecha el *Python Launcher for Windows* (`py -3.8`, `py -3.9`, etc.) o [pyenv-win](https://github.com/pyenv-win/pyenv-win).
+* **Compatibilidad con múltiples versiones de Python**: con [pyenv-win](https://github.com/pyenv-win/pyenv-win).
 * **Automatización de notebooks**: notebooks ejecutados con [papermill](https://papermill.readthedocs.io/).
 * **Prototipado interactivo**: los `venv` creados se registran como kernels de Jupyter para usar manualmente.
 * **Auditoría completa**: se guarda YAML de especificación, `pip freeze`, notebooks ejecutados y logs de GoCD/MLflow.
