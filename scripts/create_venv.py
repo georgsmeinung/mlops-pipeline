@@ -42,12 +42,20 @@ def main():
     # 1) Check if Python version is installed, install if not
     check_and_install_python_version(py_ver)
     
+    # 2) Get exact python.exe path
+    proc = subprocess.run("pyenv which python", shell=True, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(f"Cannot finde python.exe for {py_ver}")
+        sys.exit(1)
+    python_path = proc.stdout.strip()
+    
     # 2) Create venv using pyenv
     # Use pyenv to switch to the specified Python version and create venv
-    create_cmd = f'pyenv exec python -m venv "{venv_path}"'
+    # create_cmd = f'pyenv exec python -m venv "{venv_path}"'
+    create_cmd = f'"{python_path}" -m venv "{venv_path}"'
     
     # Set the local Python version for this operation
-    run(f'pyenv local {py_ver}')
+    run(f'pyenv local {py_ver}')    
     run(create_cmd)
 
     # 3) Upgrade pip and install wheel
