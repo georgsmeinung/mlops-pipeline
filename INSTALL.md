@@ -25,14 +25,12 @@ Opciones. Usar **pyenv-win** (más flexible, instala versiones bajo demanda)
    ```powershell
    Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1" -OutFile "./install-pyenv-win.ps1"; &"./install-pyenv-win.ps1"
    ```
-2. Reiniciar la terminal.
-3. Instalar versiones necesarias:
-
+2. Agregar pyenv al path
    ```powershell
-   pyenv install 3.8.10
-   pyenv install 3.9.13
-   pyenv install 3.10.11
+   $env:PATH="$env:USERPROFILE\.pyenv\pyenv-win\bin;$env:USERPROFILE\.pyenv\pyenv-win\shims;$env:PATH"
    ```
+
+3. Reiniciar la terminal.
 
 ---
 

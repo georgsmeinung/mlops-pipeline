@@ -1,0 +1,10 @@
+stage: test
+python_version: "3.9"
+venv_name: "ml_test_py39"
+packages:
+  - pandas
+pip_extra_index: null   # opcional
+pre_commands:
+  - "chcp 65001"        # ejemplo si querés forzar UTF-8 en Windows
+post_commands: []
+kernel_display_name: "ml_test_py39"
