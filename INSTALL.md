@@ -55,7 +55,7 @@ cd mlops-pipeline
 
 ---
 
-## 5. Instalar MLflow
+## 5. Instalar MLflow (opcional pipeline completo)
 
 En el Python base:
 
@@ -73,7 +73,7 @@ Esto abre la UI en `http://127.0.0.1:5000`.
 
 ---
 
-## 6. Instalar GoCD
+## 6. Instalar GoCD (opcional pipeline completo)
 
 1. Descargar **GoCD Server** y **GoCD Agent (Windows)** desde: [https://www.gocd.org/download/](https://www.gocd.org/download/).
 2. Instalar **GoCD Server** en una máquina Windows (puede ser la misma del equipo).
@@ -85,17 +85,7 @@ Esto abre la UI en `http://127.0.0.1:5000`.
 
 ---
 
-## 7. Crear estructura de carpetas
-
-Si no está creada ya en el repo:
-
-```powershell
-mkdir specs notebooks params scripts gocd
-```
-
----
-
-## 8. Configurar GoCD pipeline
+## 7. Configurar GoCD pipeline (opcional pipeline completo)
 
 1. Ingresar a la UI de GoCD (`http://localhost:8153`).
 2. Crear un pipeline llamado `mlops_pipeline`.
@@ -119,19 +109,19 @@ mkdir specs notebooks params scripts gocd
 
 ---
 
-## 9. Validar el setup
+## 8. Validar el setup (opcional pipeline completo)
 
 1. Ejecutar el pipeline desde la UI de GoCD.
 2. Verificar:
 
-   * Se creó el venv en `C:\ml_venvs\`.
+   * Se creó el venv en `./ml_venvs/`.
    * El kernel aparece en Jupyter (`jupyter kernelspec list`).
    * El notebook fue ejecutado y guardado en `out/`.
    * En MLflow aparece un run con parámetros, métricas y artefactos.
 
 ---
 
-## 10. Uso interactivo en Jupyter
+## 9. Uso interactivo en Jupyter
 
 1. Abrir Jupyter Lab:
 
@@ -143,7 +133,7 @@ mkdir specs notebooks params scripts gocd
 
 ---
 
-## 11. Checklist rápido (resumen)
+## 10. Checklist rápido (resumen)
 
 * [ ] Python (múltiples versiones) instalado y accesible (`py -3.8`, `py -3.9`)
 * [ ] Jupyter instalado

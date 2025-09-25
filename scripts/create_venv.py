@@ -1,4 +1,6 @@
 """
+Scripts para crear entornos virtuales basados en especificaciones YAML y 
+registrar kernels para su uso en Jupyter.
 Uso: 
 python scripts/create_venv.py --spec specs/optimization.yaml --venv-root ./ml_venvs
 """

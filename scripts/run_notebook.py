@@ -1,5 +1,5 @@
 """
-run_notebook.py --venv C:\ml_venvs\ml_ingest_py38 --notebook notebooks/ingest.ipynb --output out/ingest_out.ipynb
+python run_notebook.py --venv ./ml_venvs/ml_ingest_py38 --notebook notebooks/ingest.ipynb --output out/ingest_out.ipynb
 """
 import argparse, subprocess, os, sys, yaml
 
@@ -21,7 +21,7 @@ def main():
         papermill += f' -f "{args.params_file}"'
 
     # Optional: set MLflow tracking URI (env var) before running
-    # os.environ["MLFLOW_TRACKING_URI"] = "http://mlflow-server:5000"
+    os.environ["MLFLOW_TRACKING_URI"] = "http://localhost:5000"
     run(papermill)
 
 if __name__ == "__main__":
