@@ -1,0 +1,24 @@
+stage: ingest
+python_version: "3.8"
+venv_name: "ml_autoeda_py38"
+packages:
+  - mlflow==1.29.0
+  - papermill>=2.4.0
+  - pandas
+  - requests
+  - autofeat
+  - autoviz
+  - dask
+  - dtale
+  - featuretools
+  - scikit-learn
+  - pycaret
+  - sweetviz
+  - tabulate
+  - tsfresh
+  - ydata-profiling
+pip_extra_index: null   # opcional
+pre_commands:
+  - "chcp 65001"        # ejemplo si querés forzar UTF-8 en Windows
+post_commands: []
+kernel_display_name: "ml_autoeda_py38"
