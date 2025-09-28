@@ -1,1 +1,2 @@
-ml_venvs/
+ml_venvs/*
+ml_envs/*
