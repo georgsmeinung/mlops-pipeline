@@ -3,7 +3,7 @@ Script para crear entornos Conda en una carpeta específica usando -n (nombre),
 instalar paquetes con pip y registrar kernel de Jupyter.
 
 Uso:
-python create_conda_env.py --spec specs/test.yaml --env-root ./ml_envs
+python scripts/create_conda_env.py --spec specs/test.yaml --env-root ./ml_envs
 
 Parámetros del YAML:
 venv_name: nombre del entorno

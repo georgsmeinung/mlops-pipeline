@@ -1,5 +1,5 @@
 venv_name: test38
-python_version: 3.8
+python_version: "3.8"
 packages:
   - numpy
   - pandas
