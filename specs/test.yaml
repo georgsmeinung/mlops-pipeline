@@ -1,8 +1,6 @@
-venv_name: test_env_38
-python_version: 3.8 
-conda_packages:
+venv_name: test38
+python_version: 3.8
+packages:
   - numpy
   - pandas
-pip_packages:
-  - lightgbm
-kernel_display_name: "Python (test_env_38)"
+kernel_display_name: "Python (test38)"

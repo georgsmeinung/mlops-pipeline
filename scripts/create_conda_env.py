@@ -1,58 +1,58 @@
 """
-Script para crear entornos con Conda a partir de especificaciones YAML 
-y registrar kernels para Jupyter.
+Script para crear entornos Conda en una carpeta específica usando -n (nombre),
+instalar paquetes con pip y registrar kernel de Jupyter.
 
-Uso: 
-python scripts/create_conda_env.py --spec specs/test.yaml --env-root ./ml_envs
+Uso:
+python create_conda_env.py --spec specs/test.yaml --env-root ./ml_envs
+
+Parámetros del YAML:
+venv_name: nombre del entorno
+python_version: versión de Python
+packages: lista de paquetes pip a instalar
+kernel_display_name: nombre a mostrar en Jupyter
 """
-import argparse, subprocess, sys, yaml, os
+
+import argparse, subprocess, os, yaml
 from pathlib import Path
 
 def run(cmd, env=None):
     print(">", cmd)
-    proc = subprocess.run(cmd, shell=True, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    print(proc.stdout.decode(errors='ignore'))
+    subprocess.run(cmd, shell=True, check=True, env=env)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--spec", required=True)
-    parser.add_argument("--env-root", required=True)
+    parser.add_argument("--env-root", required=True, help="Carpeta donde se crearán los entornos")
     args = parser.parse_args()
 
     spec = yaml.safe_load(open(args.spec))
-    env_name = spec["venv_name"]   # lo dejo igual para no romper specs
+    env_name = spec["venv_name"]
     py_ver = spec["python_version"]
-    env_path = Path(args.env_root) / env_name
+    packages = spec.get("packages", [])
+    display_name = spec.get("kernel_display_name", env_name)
 
-    # 1) Crear entorno con conda
-    #   -p especifica el path exacto (en lugar de manejar entornos por nombre global)
-    run(f'conda create -y -p "{env_path}" python={py_ver}')
+    # 1) Crear entorno con nombre, pero con folder raíz personalizado
+    env_root = Path(args.env_root).resolve()
+    env_root.mkdir(parents=True, exist_ok=True)
 
-    # 2) Instalar paquetes con conda (si están listados)
-    conda_packages = spec.get("conda_packages", [])
-    if conda_packages:
-        run(f'conda install -y -p "{env_path}" ' + " ".join(conda_packages))
+    env = os.environ.copy()
+    env["CONDA_ENVS_PATH"] = str(env_root)
 
-    # 3) Instalar paquetes con pip (fallback)
-    pip_packages = spec.get("pip_packages", [])
-    if pip_packages:
-        pip_exec = env_path / ("Scripts" if os.name == "nt" else "bin") / "pip"
-        cmd = [str(pip_exec), "install", "-vvv"] + pip_packages
-        subprocess.run(cmd, check=True)
+    run(f'conda create -y -n "{env_name}" python={py_ver}', env=env)
 
-    # 4) Registrar kernel en Jupyter
-    python_exec = env_path / ("Scripts" if os.name == "nt" else "bin") / "python"
-    kernel_name = env_name
-    display_name = spec.get("kernel_display_name", kernel_name)
+    # 2) Instalar paquetes con pip dentro del entorno
+    if packages:
+        run(f'conda run -n "{env_name}" pip install -vvv ' + " ".join(packages), env=env)
 
-    run(f'"{python_exec}" -m pip install ipykernel')
-    run(f'"{python_exec}" -m ipykernel install --user --name "{kernel_name}" --display-name "{display_name}"')
+    # 3) Instalar ipykernel y registrar kernel en Jupyter
+    run(f'conda run -n "{env_name}" pip install ipykernel', env=env)
+    run(f'conda run -n "{env_name}" python -m ipykernel install --user --name "{env_name}" --display-name "{display_name}"', env=env)
 
-    # 5) Guardar freeze para auditoría
-    freeze_file = f"{env_path}_freeze.txt"
-    run(f'"{python_exec}" -m pip freeze > "{freeze_file}"')
+    # 4) Guardar pip freeze para auditoría
+    freeze_file = Path(f"{env_root}/{env_name}_freeze.txt")
+    run(f'conda run -n "{env_name}" pip freeze > "{freeze_file}"', env=env)
 
-    print("Conda env ready:", env_path)
+    print("Conda env ready:", env_root / env_name)
 
 if __name__ == "__main__":
     main()
